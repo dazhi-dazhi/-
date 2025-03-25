@@ -1,0 +1,419 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>扫雷游戏</title>
+    <style>
+        body {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            background: url('https://au.9you.com/web_v6/static/wp/100331/1440-900-1.jpg') center/cover;
+        }
+
+        table {
+            border-collapse: collapse;
+            position: relative;
+        }
+
+        td {
+            width: 20px;
+            height: 20px;
+            border: 1px solid #ccc;
+            text-align: center;
+            cursor: pointer;
+            background-color: white;
+            box-shadow: inset 0 2px 2px rgba(255, 255, 255, 0.5), 0 2px 5px rgba(0, 0, 0, 0.3);
+            transform: perspective(1px) translateZ(0);
+            transition-duration: 0.3s;
+            transition-property: transform;
+        }
+
+        td:hover {
+            transform: scale(1.05);
+        }
+
+        #timer {
+            margin-bottom: 10px;
+        }
+
+        #instructions {
+            margin-top: 20px;
+        }
+
+        #game-options {
+            display: none;
+            flex-direction: row;
+            gap: 10px;
+        }
+
+        #max-level-container {
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+        }
+
+        #difficulty-container {
+            margin-top: 10px;
+            display: flex;
+            gap: 5px;
+            align-items: center;
+        }
+
+        .difficulty {
+            width: 20px;
+            height: 20px;
+            background-color: lightblue;
+            text-align: center;
+            line-height: 20px;
+            cursor: pointer;
+        }
+
+        .difficulty:hover {
+            background-color: lightgreen;
+        }
+
+        #game-options button {
+            background-color: hsl(45, 40%, 80%);
+            box-shadow: inset 0 2px 2px rgba(255, 255, 255, 0.5), 0 2px 5px rgba(0, 0, 0, 0.3);
+            border: none;
+            padding: 10px 20px;
+            cursor: pointer;
+            transition-duration: 0.3s;
+            transition-property: transform;
+        }
+
+        #game-options button:hover {
+            transform: scale(1.05);
+        }
+
+        #game-success {
+            display: none;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 36px;
+            color: red;
+            z-index: 1;
+            background-color: rgba(255, 255, 255, 0.8);
+            padding: 20px;
+            border-radius: 10px;
+        }
+
+        #submit-button {
+            background-color: hsl(45, 40%, 80%);
+            box-shadow: inset 0 2px 2px rgba(255, 255, 255, 0.5), 0 2px 5px rgba(0, 0, 0, 0.3);
+            border: none;
+            padding: 10px 20px;
+            cursor: pointer;
+            transition-duration: 0.3s;
+            transition-property: transform;
+        }
+
+        #submit-button:hover {
+            transform: scale(1.05);
+        }
+
+        #result-message {
+            font-size: 24px;
+            font-weight: bold;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="max-level-container">
+        <div>
+            <h1>扫雷游戏</h1>
+            <div id="timer">时间: 0 秒</div>
+            <div id="difficulty-container">
+                <span>难度系数选择</span>
+                <!-- 难度系数选择 -->
+            </div>
+            <div id="game-options">
+                <button id="option1">再来一次</button>
+                <button id="option2">进入下一关</button>
+            </div>
+            <button id="submit-button">提交</button>
+            <div id="result-message"></div>
+            <table id="board"></table>
+            <div id="game-success">游戏成功</div>
+            <div id="instructions">
+                <p>游戏提示：数字代表周围地雷的数量</p>
+            </div>
+        </div>
+    </div>
+    <audio id="background-music" autoplay loop>
+        <source src="https://api.doubao.com/random-music" type="audio/mpeg">
+        你的浏览器不支持音频播放。
+    </audio>
+    <audio id="explosion-sound">
+        <source src="https://www.soundjay.com/explosion/explosion-01.wav" type="audio/wav">
+        你的浏览器不支持音频播放。
+    </audio>
+    <script>
+        let currentDifficulty = 1;
+        let rows, cols, mines;
+        const board = document.getElementById('board');
+        const cells = [];
+        const mineLocations = [];
+        let timerInterval;
+        let elapsedTime = 0;
+        const gameOptions = document.getElementById('game-options');
+        const option1 = document.getElementById('option1');
+        const option2 = document.getElementById('option2');
+        const backgroundMusic = document.getElementById('background-music');
+        const explosionSound = document.getElementById('explosion-sound');
+        const difficultyContainer = document.getElementById('difficulty-container');
+        const gameSuccess = document.getElementById('game-success');
+        const submitButton = document.getElementById('submit-button');
+        const resultMessage = document.getElementById('result-message');
+
+        // 初始化难度系数选择
+        function initDifficultySelection() {
+            for (let i = 1; i <= 10; i++) {
+                const difficultyDiv = document.createElement('div');
+                difficultyDiv.classList.add('difficulty');
+                difficultyDiv.textContent = i;
+                difficultyDiv.addEventListener('click', () => {
+                    currentDifficulty = i;
+                    initBoard();
+                });
+                difficultyContainer.appendChild(difficultyDiv);
+            }
+        }
+
+        // 初始化不同难度的参数
+        function getDifficultyParams(difficulty) {
+            if (difficulty === 1) {
+                rows = 8;
+                cols = 8;
+                mines = 4;
+            } else if (difficulty <= 3) {
+                rows = 8 + (difficulty - 1) * 2;
+                cols = 8 + (difficulty - 1) * 2;
+                mines = 4 + (difficulty - 1) * 3;
+            } else if (difficulty <= 6) {
+                rows = 14 + (difficulty - 4) * 2;
+                cols = 14 + (difficulty - 4) * 2;
+                mines = 10 + (difficulty - 4) * 5;
+            } else {
+                rows = 20 + (difficulty - 7) * 2;
+                cols = 20 + (difficulty - 7) * 2;
+                mines = 25 + (difficulty - 7) * 8;
+            }
+        }
+
+        // 初始化游戏板
+        function initBoard() {
+            board.innerHTML = '';
+            cells.length = 0;
+            mineLocations.length = 0;
+            getDifficultyParams(currentDifficulty);
+            for (let i = 0; i < rows; i++) {
+                const row = document.createElement('tr');
+                cells[i] = [];
+                for (let j = 0; j < cols; j++) {
+                    const cell = document.createElement('td');
+                    cell.dataset.row = i;
+                    cell.dataset.col = j;
+                    cell.addEventListener('click', () => handleClick(i, j));
+                    row.appendChild(cell);
+                    cells[i][j] = cell;
+                }
+                board.appendChild(row);
+            }
+            placeMines();
+            calculateNumbers();
+            startTimer();
+            gameOptions.style.display = 'none';
+            gameSuccess.style.display = 'none';
+            submitButton.style.display = 'block';
+            resultMessage.textContent = '';
+            // 隐藏透明度显示的地雷
+            mineLocations.forEach(([row, col]) => {
+                cells[row][col].textContent = '';
+                cells[row][col].style.opacity = 1;
+            });
+        }
+
+        // 放置地雷
+        function placeMines() {
+            let count = 0;
+            while (count < mines) {
+                const row = Math.floor(Math.random() * rows);
+                const col = Math.floor(Math.random() * cols);
+                if (!mineLocations.some(mine => mine[0] === row && mine[1] === col)) {
+                    mineLocations.push([row, col]);
+                    count++;
+                }
+            }
+        }
+
+        // 计算每个格子周围的地雷数量
+        function calculateNumbers() {
+            for (let i = 0; i < rows; i++) {
+                for (let j = 0; j < cols; j++) {
+                    let mineCount = 0;
+                    for (let x = Math.max(i - 1, 0); x <= Math.min(i + 1, rows - 1); x++) {
+                        for (let y = Math.max(j - 1, 0); y <= Math.min(j + 1, cols - 1); y++) {
+                            if (mineLocations.some(mine => mine[0] === x && mine[1] === y)) {
+                                mineCount++;
+                            }
+                        }
+                    }
+                    // 限制最大数字为4
+                    cells[i][j].dataset.mines = Math.min(mineCount, 4);
+                }
+            }
+        }
+
+        // 处理点击事件
+        function handleClick(row, col) {
+            const cell = cells[row][col];
+            if (mineLocations.some(mine => mine[0] === row && mine[1] === col)) {
+                // 踩到地雷，显示炸弹，游戏结束
+                cell.textContent = '💣';
+                stopTimer();
+                explosionSound.play();
+                alert('游戏结束，你踩到地雷了！');
+                revealAllMines();
+                showGameOptions(false);
+                submitButton.style.display = 'none';
+            } else {
+                const mineCount = parseInt(cell.dataset.mines);
+                if (mineCount > 0) {
+                    cell.textContent = mineCount;
+                } else {
+                    // 递归展开空白区域
+                    floodFill(row, col);
+                }
+                checkWin();
+            }
+        }
+
+        // 递归展开空白区域
+        function floodFill(row, col) {
+            if (row < 0 || row >= rows || col < 0 || col >= cols) return;
+            const cell = cells[row][col];
+            if (cell.textContent || cell.style.backgroundColor === 'lightgray') return;
+            const mineCount = parseInt(cell.dataset.mines);
+            cell.textContent = mineCount > 0 ? mineCount : '';
+            cell.style.backgroundColor = 'lightgray';
+            if (mineCount === 0) {
+                for (let x = Math.max(row - 1, 0); x <= Math.min(row + 1, rows - 1); x++) {
+                    for (let y = Math.max(col - 1, 0); y <= Math.min(col + 1, cols - 1); y++) {
+                        floodFill(x, y);
+                    }
+                }
+            }
+        }
+
+        // 揭示所有地雷
+        function revealAllMines() {
+            mineLocations.forEach(([row, col]) => {
+                cells[row][col].textContent = '💣';
+            });
+        }
+
+        // 检查是否获胜
+        function checkWin() {
+            let unrevealedNonMineCells = 0;
+            for (let i = 0; i < rows; i++) {
+                for (let j = 0; j < cols; j++) {
+                    if (!mineLocations.some(mine => mine[0] === i && mine[1] === j) && (!cells[i][j].textContent || cells[i][j].style.backgroundColor!== 'lightgray')) {
+                        unrevealedNonMineCells++;
+                    }
+                }
+            }
+            if (unrevealedNonMineCells === 0) {
+                console.log('游戏成功条件满足');
+                stopTimer();
+                gameSuccess.style.display = 'block';
+                showGameOptions(true);
+                submitButton.style.display = 'none';
+            }
+        }
+
+        // 提交按钮点击事件
+        function onSubmitClick() {
+            mineLocations.forEach(([row, col]) => {
+                cells[row][col].textContent = '💣';
+                cells[row][col].style.opacity = 0.5;
+            });
+            let allFilled = true;
+            for (let i = 0; i < rows; i++) {
+                for (let j = 0; j < cols; j++) {
+                    const cell = cells[i][j];
+                    if (!cell.textContent && cell.style.backgroundColor!== 'lightgray') {
+                        allFilled = false;
+                        break;
+                    }
+                }
+                if (!allFilled) break;
+            }
+            if (allFilled) {
+                resultMessage.textContent = '游戏成功';
+                stopTimer();
+                gameSuccess.style.display = 'block';
+            } else {
+                resultMessage.textContent = '还有没选到的格子';
+            }
+            submitButton.style.display = 'none';
+            showGameOptions(true);
+        }
+
+        // 显示游戏选项
+        function showGameOptions(isWin) {
+            console.log('显示游戏选项，isWin:', isWin);
+            gameOptions.style.display = 'flex';
+            option1.textContent = '再来一次';
+            option2.textContent = '进入下一关';
+            option1.onclick = () => {
+                initBoard();
+            };
+            option2.onclick = () => {
+                if (currentDifficulty < 10) {
+                    currentDifficulty++;
+                    initBoard();
+                } else {
+                    alert('已经是最高难度啦！');
+                }
+            };
+        }
+
+        // 启动计时器
+        function startTimer() {
+            elapsedTime = 0;
+            clearInterval(timerInterval);
+            timerInterval = setInterval(() => {
+                elapsedTime++;
+                document.getElementById('timer').textContent = `时间: ${elapsedTime} 秒`;
+            }, 1000);
+            backgroundMusic.play();
+            submitButton.style.display = 'block';
+        }
+
+        // 停止计时器
+        function stopTimer() {
+            clearInterval(timerInterval);
+            backgroundMusic.pause();
+            backgroundMusic.currentTime = 0;
+        }
+
+        initDifficultySelection();
+        initBoard();
+        submitButton.addEventListener('click', onSubmitClick);
+    </script>
+</body>
+
+</html>
